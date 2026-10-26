@@ -1,0 +1,822 @@
+{
+  "name": "Subscription & SaaS Renewal Auditor",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 7
+            }
+          ]
+        }
+      },
+      "id": "633fd68b-95be-4b54-b097-4ae8c540f78c",
+      "name": "Daily Schedule (7AM)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -1312,
+        256
+      ]
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_SHEET_ID",
+          "mode": "list",
+          "cachedResultName": "Your sheet"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 808671887,
+          "mode": "list",
+          "cachedResultName": "Your sheet"
+        },
+        "options": {}
+      },
+      "id": "1c7128c1-5553-45bf-ac82-8cef6052941b",
+      "name": "Get Subscriptions",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        -784,
+        256
+      ],
+      "executeOnce": true
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "a1",
+              "name": "SubscriptionName",
+              "type": "string",
+              "value": "={{ $json.SubscriptionName }}"
+            },
+            {
+              "id": "a2",
+              "name": "Vendor",
+              "type": "string",
+              "value": "={{ $json.Vendor }}"
+            },
+            {
+              "id": "a3",
+              "name": "OwnerName",
+              "type": "string",
+              "value": "={{ $json.OwnerName }}"
+            },
+            {
+              "id": "a4",
+              "name": "OwnerEmail",
+              "type": "string",
+              "value": "={{ $json.OwnerEmail }}"
+            },
+            {
+              "id": "a5",
+              "name": "MonthlyCost",
+              "type": "number",
+              "value": "={{ $json.MonthlyCost }}"
+            },
+            {
+              "id": "a6",
+              "name": "RenewalDate",
+              "type": "string",
+              "value": "={{ $json.RenewalDate }}"
+            },
+            {
+              "id": "a7",
+              "name": "LicensedSeats",
+              "type": "number",
+              "value": "={{ $json.LicensedSeats }}"
+            },
+            {
+              "id": "a8",
+              "name": "ActiveUsers",
+              "type": "number",
+              "value": "={{ $json.ActiveUsers }}"
+            },
+            {
+              "id": "a9",
+              "name": "DaysUntilRenewal",
+              "type": "number",
+              "value": "={{ Math.ceil((new Date($json.RenewalDate) - new Date()) / 86400000) }}"
+            },
+            {
+              "id": "a10",
+              "name": "DaysSinceLastUsed",
+              "type": "number",
+              "value": "={{ Math.floor((new Date() - new Date($json.LastUsedDate)) / 86400000) }}"
+            },
+            {
+              "id": "a11",
+              "name": "UtilizationPct",
+              "type": "number",
+              "value": "={{ $json.LicensedSeats > 0 ? Math.round(($json.ActiveUsers / $json.LicensedSeats) * 100) : 0 }}"
+            },
+            {
+              "id": "a12",
+              "name": "IsUnused",
+              "type": "boolean",
+              "value": "={{ $json.ActiveUsers === 0 || (Math.floor((new Date() - new Date($json.LastUsedDate)) / 86400000)) > 45 }}"
+            },
+            {
+              "id": "a13",
+              "name": "IsValidData",
+              "type": "boolean",
+              "value": "={{ !isNaN(new Date($json.RenewalDate).getTime()) && !isNaN(new Date($json.LastUsedDate).getTime()) && !isNaN(Number($json.ActiveUsers)) && Number($json.ActiveUsers) >= 0 && !isNaN(Number($json.LicensedSeats)) && Number($json.LicensedSeats) > 0 && $json.OwnerEmail !== '' && $json.OwnerEmail !== undefined }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "c13b2a62-6ed2-4739-a131-8930db345240",
+      "name": "Calculate Renewal & Usage Status",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -592,
+        256
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "cond1",
+              "leftValue": "={{ $json.DaysUntilRenewal }}",
+              "rightValue": 30,
+              "operator": {
+                "type": "number",
+                "operation": "lte"
+              }
+            },
+            {
+              "id": "cond2",
+              "leftValue": "={{ $json.DaysUntilRenewal }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gte"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "0ba1998b-9e10-4676-9b65-f0fa593da36b",
+      "name": "IF - Renewal Within 30 Days?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        128,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Subscription: {{ $json.SubscriptionName }} ({{ $json.Vendor }})\nOwner: {{ $json.OwnerName }}\nRenews in: {{ $json.DaysUntilRenewal }} days\nMonthly cost: ${{ $json.MonthlyCost }}\nLicensed seats: {{ $('Get Subscriptions').item.json.LicensedSeats }}\nActive users (last 30 days): {{ $('Get Subscriptions').item.json.ActiveUsers }}\nUtilization: {{ $json.UtilizationPct }}%\nDays since last use: {{ $('Calculate Renewal & Usage Status').item.json.DaysSinceLastUsed }}\nLooks unused: {{ $json.IsUnused }}\n\nWrite the body of a short internal note to Finance about this upcoming renewal. If \"Looks unused\" is true, be direct that usage data suggests this subscription may not be needed anymore and recommend reviewing whether to cancel before it renews - state the utilization numbers plainly. If \"Looks unused\" is false, keep it brief and low-key: just a heads-up that it's renewing soon and usage looks healthy, no action implied. 3-5 sentences, plain English, no headers, no markdown, ready to drop into an HTML email paragraph.",
+        "options": {
+          "systemMessage": "You are a SaaS spend review assistant. You write concise, factual notes for a Finance team about upcoming software renewals. You never invent numbers - you only use the figures given to you. You are direct about likely-unused subscriptions but never alarmist, and neutral/brief about subscriptions that are clearly still in active use."
+        }
+      },
+      "id": "314fd1a1-4b25-4044-bdf9-70ce1dc836aa",
+      "name": "Renewal Advisory Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.9,
+      "position": [
+        400,
+        -160
+      ]
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-4o-mini",
+          "mode": "list"
+        },
+        "options": {}
+      },
+      "id": "29cb8eaf-77b3-4c74-93ac-172db11584f0",
+      "name": "OpenAI Chat Model (LOCAL TEST)",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        432,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "b1",
+              "name": "SubscriptionName",
+              "type": "string",
+              "value": "={{ $('Calculate Renewal & Usage Status').item.json.SubscriptionName }}"
+            },
+            {
+              "id": "b2",
+              "name": "Vendor",
+              "type": "string",
+              "value": "={{ $('Calculate Renewal & Usage Status').item.json.Vendor }}"
+            },
+            {
+              "id": "b3",
+              "name": "OwnerName",
+              "type": "string",
+              "value": "={{ $('Calculate Renewal & Usage Status').item.json.OwnerName }}"
+            },
+            {
+              "id": "b4",
+              "name": "OwnerEmail",
+              "type": "string",
+              "value": "={{ $('Calculate Renewal & Usage Status').item.json.OwnerEmail }}"
+            },
+            {
+              "id": "b5",
+              "name": "MonthlyCost",
+              "type": "number",
+              "value": "={{ $('Calculate Renewal & Usage Status').item.json.MonthlyCost }}"
+            },
+            {
+              "id": "b6",
+              "name": "RenewalDate",
+              "type": "string",
+              "value": "={{ $('Calculate Renewal & Usage Status').item.json.RenewalDate }}"
+            },
+            {
+              "id": "b7",
+              "name": "DaysUntilRenewal",
+              "type": "number",
+              "value": "={{ $('Calculate Renewal & Usage Status').item.json.DaysUntilRenewal }}"
+            },
+            {
+              "id": "b8",
+              "name": "UtilizationPct",
+              "type": "number",
+              "value": "={{ $('Calculate Renewal & Usage Status').item.json.UtilizationPct }}"
+            },
+            {
+              "id": "b9",
+              "name": "IsUnused",
+              "type": "boolean",
+              "value": "={{ $('Calculate Renewal & Usage Status').item.json.IsUnused }}"
+            },
+            {
+              "id": "b10",
+              "name": "EmailBody",
+              "type": "string",
+              "value": "={{ $json.output }}"
+            },
+            {
+              "id": "b11",
+              "name": "StatusColor",
+              "type": "string",
+              "value": "={{ $('Calculate Renewal & Usage Status').item.json.IsUnused ? '#D9534F' : '#4472C4' }}"
+            },
+            {
+              "id": "b12",
+              "name": "StatusLabel",
+              "type": "string",
+              "value": "={{ $('Calculate Renewal & Usage Status').item.json.IsUnused ? 'Likely Unused - Renewal Coming Up' : 'Renewal Coming Up' }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "2571ac38-3b5c-487a-ac70-9474e4a165ac",
+      "name": "Parse Agent Output",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        704,
+        -160
+      ]
+    },
+    {
+      "parameters": {
+        "sendTo": "you@example.com",
+        "subject": "=Renewal Review: {{ $json.SubscriptionName }} ({{ $json.DaysUntilRenewal }} days out)",
+        "message": "=<div style=\"font-family: Arial, sans-serif; max-width:600px; margin:0 auto;\">\n  <div style=\"background-color:{{ $json.StatusColor }}; color:#ffffff; padding:16px 20px; border-radius:6px 6px 0 0;\">\n    <h2 style=\"margin:0; font-size:18px;\">{{ $json.StatusLabel }}</h2>\n  </div>\n  <div style=\"border:1px solid #e0e0e0; border-top:none; padding:20px; background:#ffffff;\">\n    <table style=\"width:100%; border-collapse:collapse; margin-bottom:16px;\">\n      <tr><td style=\"padding:6px 0; color:#555;\">Subscription</td><td style=\"padding:6px 0; font-weight:bold;\">{{ $json.SubscriptionName }}</td></tr>\n      <tr><td style=\"padding:6px 0; color:#555;\">Owner</td><td style=\"padding:6px 0;\">{{ $json.OwnerName }}</td></tr>\n      <tr><td style=\"padding:6px 0; color:#555;\">Renews In</td><td style=\"padding:6px 0;\">{{ $json.DaysUntilRenewal }} days</td></tr>\n      <tr><td style=\"padding:6px 0; color:#555;\">Monthly Cost</td><td style=\"padding:6px 0;\">${{ $json.MonthlyCost }}</td></tr>\n      <tr><td style=\"padding:6px 0; color:#555;\">Utilization</td><td style=\"padding:6px 0;\">{{ $json.UtilizationPct }}%</td></tr>\n    </table>\n    <div style=\"background:#f7f7f7; border-left:4px solid {{ $json.StatusColor }}; padding:12px 16px; border-radius:4px; margin-bottom:16px;\">\n      <p style=\"margin:0; color:#333; line-height:1.5;\">{{ $json.EmailBody }}</p>\n    </div>\n    <p style=\"color:#888; font-size:12px; margin:0;\">Automatically sent via n8n — Subscription & SaaS Renewal Auditor</p>\n  </div>\n</div>",
+        "options": {
+          "ccList": "={{ $json.OwnerEmail }}"
+        }
+      },
+      "id": "44bcbd68-406a-4ab6-846b-8b15e6edaad2",
+      "name": "Send Renewal Alert",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        880,
+        -160
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_SHEET_ID",
+          "mode": "list",
+          "cachedResultName": "Your sheet"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1527609008,
+          "mode": "list",
+          "cachedResultName": "Your sheet"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Timestamp": "={{ $now.toISO() }}",
+            "SubscriptionName": "={{ $('Parse Agent Output').item.json.SubscriptionName }}",
+            "DaysUntilRenewal": "={{ $('Parse Agent Output').item.json.DaysUntilRenewal }}",
+            "UtilizationPct": "={{ $('Parse Agent Output').item.json.UtilizationPct }}",
+            "IsUnused": "={{ $('Parse Agent Output').item.json.IsUnused }}",
+            "Action": "Renewal Alert Sent",
+            "RenewalDate": "={{ $('Parse Agent Output').item.json.RenewalDate }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "Timestamp",
+              "displayName": "Timestamp",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "SubscriptionName",
+              "displayName": "SubscriptionName",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "DaysUntilRenewal",
+              "displayName": "DaysUntilRenewal",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "UtilizationPct",
+              "displayName": "UtilizationPct",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "IsUnused",
+              "displayName": "IsUnused",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Action",
+              "displayName": "Action",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "RenewalDate",
+              "displayName": "RenewalDate",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "06d799e4-31ca-4df3-a8cc-8b53be6cc7da",
+      "name": "Log Renewal Alert",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        1120,
+        -160
+      ]
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_SHEET_ID",
+          "mode": "list",
+          "cachedResultName": "Your sheet"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1527609008,
+          "mode": "list",
+          "cachedResultName": "Your sheet"
+        },
+        "options": {}
+      },
+      "id": "5c6cd400-11c1-4c5a-a27c-5ed668118dde",
+      "name": "Get Renewal Log",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        -1056,
+        256
+      ],
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "d1",
+              "name": "SubscriptionName",
+              "type": "string",
+              "value": "={{ $json.SubscriptionName }}"
+            },
+            {
+              "id": "d2",
+              "name": "Vendor",
+              "type": "string",
+              "value": "={{ $json.Vendor }}"
+            },
+            {
+              "id": "d3",
+              "name": "OwnerName",
+              "type": "string",
+              "value": "={{ $json.OwnerName }}"
+            },
+            {
+              "id": "d4",
+              "name": "OwnerEmail",
+              "type": "string",
+              "value": "={{ $json.OwnerEmail }}"
+            },
+            {
+              "id": "d5",
+              "name": "MonthlyCost",
+              "type": "number",
+              "value": "={{ $json.MonthlyCost }}"
+            },
+            {
+              "id": "d6",
+              "name": "RenewalDate",
+              "type": "string",
+              "value": "={{ $json.RenewalDate }}"
+            },
+            {
+              "id": "d7",
+              "name": "DaysUntilRenewal",
+              "type": "number",
+              "value": "={{ $json.DaysUntilRenewal }}"
+            },
+            {
+              "id": "d8",
+              "name": "UtilizationPct",
+              "type": "number",
+              "value": "={{ $json.UtilizationPct }}"
+            },
+            {
+              "id": "d9",
+              "name": "IsUnused",
+              "type": "boolean",
+              "value": "={{ $json.IsUnused }}"
+            },
+            {
+              "id": "d10",
+              "name": "IsValidData",
+              "type": "boolean",
+              "value": "={{ $json.IsValidData }}"
+            },
+            {
+              "id": "d11",
+              "name": "AlreadyAlerted",
+              "type": "boolean",
+              "value": "={{ $('Get Renewal Log').all().some(item => item.json.SubscriptionName === $json.SubscriptionName && item.json.RenewalDate === $json.RenewalDate) }}"
+            },
+            {
+              "id": "d12",
+              "name": "CanProceed",
+              "type": "boolean",
+              "value": "={{ $json.IsValidData && !($('Get Renewal Log').all().some(item => item.json.SubscriptionName === $json.SubscriptionName && item.json.RenewalDate === $json.RenewalDate)) }}"
+            },
+            {
+              "id": "d13",
+              "name": "SkipReason",
+              "type": "string",
+              "value": "={{ !$json.IsValidData ? 'Invalid Data - Missing or Bad Renewal/Usage Fields' : ($('Get Renewal Log').all().some(item => item.json.SubscriptionName === $json.SubscriptionName && item.json.RenewalDate === $json.RenewalDate) ? 'Already Alerted This Renewal Cycle' : '') }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "be51d6f8-a931-4332-866d-5597c39d41b5",
+      "name": "Check Not Duplicate & Valid",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -352,
+        256
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "cp1",
+              "leftValue": "={{ $json.CanProceed }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "1037f0c6-b15f-473d-95a8-ebc48ddbf71c",
+      "name": "IF - Can Proceed?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -112,
+        256
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_SHEET_ID",
+          "mode": "list",
+          "cachedResultName": "Your sheet"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1527609008,
+          "mode": "list",
+          "cachedResultName": "Your sheet"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Timestamp": "={{ $now.toISO() }}",
+            "SubscriptionName": "={{ $json.SubscriptionName }}",
+            "DaysUntilRenewal": "={{ $json.DaysUntilRenewal }}",
+            "UtilizationPct": "={{ $json.UtilizationPct }}",
+            "IsUnused": "={{ $json.IsUnused }}",
+            "Action": "={{ 'Skipped - ' + $json.SkipReason }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "Timestamp",
+              "displayName": "Timestamp",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "SubscriptionName",
+              "displayName": "SubscriptionName",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "DaysUntilRenewal",
+              "displayName": "DaysUntilRenewal",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "UtilizationPct",
+              "displayName": "UtilizationPct",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "IsUnused",
+              "displayName": "IsUnused",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Action",
+              "displayName": "Action",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "c5e173df-e166-4f16-8a22-41e75b3ad4d7",
+      "name": "Log Exception",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        112,
+        400
+      ]
+    }
+  ],
+  "connections": {
+    "Daily Schedule (7AM)": {
+      "main": [
+        [
+          {
+            "node": "Get Renewal Log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Subscriptions": {
+      "main": [
+        [
+          {
+            "node": "Calculate Renewal & Usage Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calculate Renewal & Usage Status": {
+      "main": [
+        [
+          {
+            "node": "Check Not Duplicate & Valid",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - Renewal Within 30 Days?": {
+      "main": [
+        [
+          {
+            "node": "Renewal Advisory Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Renewal Advisory Agent": {
+      "main": [
+        [
+          {
+            "node": "Parse Agent Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model (LOCAL TEST)": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Renewal Advisory Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Agent Output": {
+      "main": [
+        [
+          {
+            "node": "Send Renewal Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Renewal Alert": {
+      "main": [
+        [
+          {
+            "node": "Log Renewal Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Renewal Log": {
+      "main": [
+        [
+          {
+            "node": "Get Subscriptions",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Not Duplicate & Valid": {
+      "main": [
+        [
+          {
+            "node": "IF - Can Proceed?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - Can Proceed?": {
+      "main": [
+        [
+          {
+            "node": "IF - Renewal Within 30 Days?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Log Exception",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "pinData": {}
+}

@@ -1,0 +1,949 @@
+{
+  "name": "Employee Timesheet & Overtime Compliance Checker",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "weeks",
+              "triggerAtHour": 18
+            }
+          ]
+        }
+      },
+      "id": "928a36c9-4c38-4cde-95ed-91fd9f6f6d77",
+      "name": "Weekly Schedule (Sun 6PM)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -2864,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_SHEET_ID",
+          "mode": "list",
+          "cachedResultName": "Your sheet"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 2022830745,
+          "mode": "list",
+          "cachedResultName": "Your sheet"
+        },
+        "options": {}
+      },
+      "id": "77b2fff1-f198-4c72-b551-3cb9b4b85a65",
+      "name": "Get Timesheet Entries",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        -2384,
+        304
+      ],
+      "executeOnce": true
+    },
+    {
+      "parameters": {
+        "fieldsToSummarize": {
+          "values": [
+            {
+              "aggregation": "sum",
+              "field": "HoursWorked"
+            }
+          ]
+        },
+        "fieldsToSplitBy": "EmployeeName, EmployeeEmail, ManagerEmail, Department",
+        "options": {}
+      },
+      "id": "9574ecc1-6e2d-4f41-90f8-14b6630869cb",
+      "name": "Sum Hours by Employee",
+      "type": "n8n-nodes-base.summarize",
+      "typeVersion": 1.1,
+      "position": [
+        -2144,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "a1",
+              "name": "EmployeeName",
+              "type": "string",
+              "value": "={{ $json.EmployeeName }}"
+            },
+            {
+              "id": "a2",
+              "name": "EmployeeEmail",
+              "type": "string",
+              "value": "={{ $json.EmployeeEmail }}"
+            },
+            {
+              "id": "a3",
+              "name": "ManagerEmail",
+              "type": "string",
+              "value": "={{ $json.ManagerEmail }}"
+            },
+            {
+              "id": "a4",
+              "name": "Department",
+              "type": "string",
+              "value": "={{ $json.Department }}"
+            },
+            {
+              "id": "a5",
+              "name": "TotalHours",
+              "type": "number",
+              "value": "={{ $json.sum_HoursWorked }}"
+            },
+            {
+              "id": "a6",
+              "name": "StandardWeeklyHours",
+              "type": "number",
+              "value": 40
+            },
+            {
+              "id": "a7",
+              "name": "OvertimeLimit",
+              "type": "number",
+              "value": 45
+            },
+            {
+              "id": "a8",
+              "name": "OvertimeHours",
+              "type": "number",
+              "value": "={{ Math.max(0, $json.sum_HoursWorked - 40) }}"
+            },
+            {
+              "id": "a9",
+              "name": "ThresholdStatus",
+              "type": "string",
+              "value": "={{ $json.sum_HoursWorked > 45 ? 'violation' : ($json.sum_HoursWorked > 40 ? 'approaching' : 'compliant') }}"
+            },
+            {
+              "id": "a10",
+              "name": "WeekStamp",
+              "type": "string",
+              "value": "={{ $now.toFormat(\"kkkk-'W'WW\") }}"
+            },
+            {
+              "id": "a11",
+              "name": "IsValidData",
+              "type": "boolean",
+              "value": "={{ $json.sum_HoursWorked > 0 && $json.sum_HoursWorked <= 168 && $json.EmployeeEmail !== '' && $json.ManagerEmail !== '' }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "2d3a43c1-b2c0-462a-b837-56d9fcfb7578",
+      "name": "Calculate Overtime Status",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -1904,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "cond1",
+              "leftValue": "={{ $json.TotalHours }}",
+              "rightValue": 40,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "8b4bc9c8-75b1-434d-9cd5-56c1b35c7f1c",
+      "name": "IF - Needs Flag?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -976,
+        208
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Employee: {{ $json.EmployeeName }}\nDepartment: {{ $json.Department }}\nTotal hours worked this week: {{ $json.TotalHours }}\nStandard weekly hours: {{ $json.StandardWeeklyHours }}\nOvertime hours: {{ $json.OvertimeHours }}\nStatus tier: {{ $json.ThresholdStatus }}\n\nWrite the body of a short internal note to Payroll/HR flagging this employee's hours before payroll runs. If status tier is \"approaching\", keep the tone informational and low-urgency (heads-up, not alarming). If status tier is \"violation\", keep the tone clear and direct that this exceeds the labor policy overtime limit and needs review before approval. State the numbers plainly. 3-5 sentences, plain English, no headers, no markdown, ready to drop into an HTML email paragraph.",
+        "options": {
+          "systemMessage": "You are a payroll compliance assistant. You write concise, professional, factual notes for HR/Payroll about employee overtime. You never invent numbers - you only use the figures given to you. You adjust tone by severity but never exaggerate risk."
+        }
+      },
+      "id": "d3a4d8c4-c148-4cad-8f83-1485ce45f645",
+      "name": "Overtime Escalation Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.9,
+      "position": [
+        -512,
+        176
+      ]
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-4o-mini",
+          "mode": "list"
+        },
+        "options": {}
+      },
+      "id": "8336e7cc-f7c9-44cc-84ed-87c671463f3b",
+      "name": "OpenAI Chat Model (LOCAL TEST)",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        -512,
+        384
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "b1",
+              "name": "EmployeeName",
+              "type": "string",
+              "value": "={{ $('Calculate Overtime Status').item.json.EmployeeName }}"
+            },
+            {
+              "id": "b2",
+              "name": "EmployeeEmail",
+              "type": "string",
+              "value": "={{ $('Calculate Overtime Status').item.json.EmployeeEmail }}"
+            },
+            {
+              "id": "b3",
+              "name": "ManagerEmail",
+              "type": "string",
+              "value": "={{ $('Calculate Overtime Status').item.json.ManagerEmail }}"
+            },
+            {
+              "id": "b4",
+              "name": "Department",
+              "type": "string",
+              "value": "={{ $('Calculate Overtime Status').item.json.Department }}"
+            },
+            {
+              "id": "b5",
+              "name": "TotalHours",
+              "type": "number",
+              "value": "={{ $('Calculate Overtime Status').item.json.TotalHours }}"
+            },
+            {
+              "id": "b6",
+              "name": "OvertimeHours",
+              "type": "number",
+              "value": "={{ $('Calculate Overtime Status').item.json.OvertimeHours }}"
+            },
+            {
+              "id": "b7",
+              "name": "ThresholdStatus",
+              "type": "string",
+              "value": "={{ $('Calculate Overtime Status').item.json.ThresholdStatus }}"
+            },
+            {
+              "id": "b8",
+              "name": "EmailBody",
+              "type": "string",
+              "value": "={{ $json.output }}"
+            },
+            {
+              "id": "b9",
+              "name": "StatusColor",
+              "type": "string",
+              "value": "={{ $('Calculate Overtime Status').item.json.ThresholdStatus === 'violation' ? '#D9534F' : '#E0A62B' }}"
+            },
+            {
+              "id": "b10",
+              "name": "StatusLabel",
+              "type": "string",
+              "value": "={{ $('Calculate Overtime Status').item.json.ThresholdStatus === 'violation' ? 'Overtime Limit Exceeded' : 'Approaching Overtime Limit' }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "e409fede-78f4-41a7-9051-d0b90f42c0d6",
+      "name": "Parse Agent Output",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -240,
+        176
+      ]
+    },
+    {
+      "parameters": {
+        "sendTo": "you@example.com",
+        "subject": "=Overtime Review Needed: {{ $json.EmployeeName }} ({{ $json.TotalHours }} hrs)",
+        "message": "=<div style=\"font-family: Arial, sans-serif; max-width:600px; margin:0 auto;\">\n  <div style=\"background-color:{{ $json.StatusColor }}; color:#ffffff; padding:16px 20px; border-radius:6px 6px 0 0;\">\n    <h2 style=\"margin:0; font-size:18px;\">{{ $json.StatusLabel }}</h2>\n  </div>\n  <div style=\"border:1px solid #e0e0e0; border-top:none; padding:20px; background:#ffffff;\">\n    <table style=\"width:100%; border-collapse:collapse; margin-bottom:16px;\">\n      <tr><td style=\"padding:6px 0; color:#555;\">Employee</td><td style=\"padding:6px 0; font-weight:bold;\">{{ $json.EmployeeName }}</td></tr>\n      <tr><td style=\"padding:6px 0; color:#555;\">Department</td><td style=\"padding:6px 0;\">{{ $json.Department }}</td></tr>\n      <tr><td style=\"padding:6px 0; color:#555;\">Total Hours This Week</td><td style=\"padding:6px 0;\">{{ $json.TotalHours }}</td></tr>\n      <tr><td style=\"padding:6px 0; color:#555;\">Overtime Hours</td><td style=\"padding:6px 0;\">{{ $json.OvertimeHours }}</td></tr>\n    </table>\n    <div style=\"background:#f7f7f7; border-left:4px solid {{ $json.StatusColor }}; padding:12px 16px; border-radius:4px; margin-bottom:16px;\">\n      <p style=\"margin:0; color:#333; line-height:1.5;\">{{ $json.EmailBody }}</p>\n    </div>\n    <p style=\"color:#888; font-size:12px; margin:0;\">Automatically sent via n8n — Employee Timesheet & Overtime Compliance Checker</p>\n  </div>\n</div>",
+        "options": {
+          "ccList": "={{ $json.ManagerEmail }}"
+        }
+      },
+      "id": "8c80bede-494d-4516-9d08-f63a0c187bb0",
+      "name": "Send Escalation Email",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        176
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_SHEET_ID",
+          "mode": "list",
+          "cachedResultName": "Your sheet"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1280552487,
+          "mode": "list",
+          "cachedResultName": "Your sheet"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "EmployeeName": "={{ $('Parse Agent Output').item.json.EmployeeName }}",
+            "Department": "={{ $('Parse Agent Output').item.json.Department }}",
+            "TotalHours": "={{ $('Parse Agent Output').item.json.TotalHours }}",
+            "OvertimeHours": "={{ $('Parse Agent Output').item.json.OvertimeHours }}",
+            "Timestamp": "={{ $now.toISO() }}",
+            "Status": "={{ $('Parse Agent Output').item.json.ThresholdStatus }}",
+            "Action": "Escalated to Payroll/HR",
+            "WeekStamp": "={{ $('Check Not Duplicate').item.json.WeekStamp }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "Timestamp",
+              "displayName": "Timestamp",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "EmployeeName",
+              "displayName": "EmployeeName",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Department",
+              "displayName": "Department",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "TotalHours",
+              "displayName": "TotalHours",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "OvertimeHours",
+              "displayName": "OvertimeHours",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Status",
+              "displayName": "Status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Action",
+              "displayName": "Action",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "f7630cfb-a607-4f11-adac-2175f43ea36f",
+      "name": "Log Entry (Flagged)",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        240,
+        176
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "c1",
+              "name": "EmployeeName",
+              "type": "string",
+              "value": "={{ $json.EmployeeName }}"
+            },
+            {
+              "id": "c2",
+              "name": "Department",
+              "type": "string",
+              "value": "={{ $json.Department }}"
+            },
+            {
+              "id": "c3",
+              "name": "TotalHours",
+              "type": "number",
+              "value": "={{ $json.TotalHours }}"
+            },
+            {
+              "id": "c4",
+              "name": "OvertimeHours",
+              "type": "number",
+              "value": "={{ $json.OvertimeHours }}"
+            },
+            {
+              "id": "c5",
+              "name": "ThresholdStatus",
+              "type": "string",
+              "value": "={{ $json.ThresholdStatus }}"
+            },
+            {
+              "id": "c6",
+              "name": "WeekStamp",
+              "type": "string",
+              "value": "={{ $json.WeekStamp }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "cca278f1-28ba-4d36-b561-6e0706e97287",
+      "name": "Build Auto-Approval Record",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -512,
+        544
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_SHEET_ID",
+          "mode": "list",
+          "cachedResultName": "Your sheet"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1280552487,
+          "mode": "list",
+          "cachedResultName": "Your sheet"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "EmployeeName": "={{ $json.EmployeeName }}",
+            "Department": "={{ $json.Department }}",
+            "TotalHours": "={{ $json.TotalHours }}",
+            "OvertimeHours": "={{ $json.OvertimeHours }}",
+            "Timestamp": "={{ $now.toISO() }}",
+            "Status": "={{ $json.ThresholdStatus }}",
+            "Action": "Auto-Approved",
+            "WeekStamp": "={{ $json.WeekStamp }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "Timestamp",
+              "displayName": "Timestamp",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "EmployeeName",
+              "displayName": "EmployeeName",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Department",
+              "displayName": "Department",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "TotalHours",
+              "displayName": "TotalHours",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "OvertimeHours",
+              "displayName": "OvertimeHours",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Status",
+              "displayName": "Status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Action",
+              "displayName": "Action",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "572174ac-b8d7-483d-bec1-53e672c263e3",
+      "name": "Log Entry (Compliant)",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        -144,
+        560
+      ]
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_SHEET_ID",
+          "mode": "list",
+          "cachedResultName": "Your sheet"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1280552487,
+          "mode": "list",
+          "cachedResultName": "Your sheet"
+        },
+        "options": {}
+      },
+      "id": "6e30a76a-9e69-496a-b6d4-6064416a0426",
+      "name": "Get Overtime Log",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        -2624,
+        304
+      ],
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "d1",
+              "name": "EmployeeName",
+              "type": "string",
+              "value": "={{ $json.EmployeeName }}"
+            },
+            {
+              "id": "d2",
+              "name": "EmployeeEmail",
+              "type": "string",
+              "value": "={{ $json.EmployeeEmail }}"
+            },
+            {
+              "id": "d3",
+              "name": "ManagerEmail",
+              "type": "string",
+              "value": "={{ $json.ManagerEmail }}"
+            },
+            {
+              "id": "d4",
+              "name": "Department",
+              "type": "string",
+              "value": "={{ $json.Department }}"
+            },
+            {
+              "id": "d5",
+              "name": "TotalHours",
+              "type": "number",
+              "value": "={{ $json.TotalHours }}"
+            },
+            {
+              "id": "d6",
+              "name": "StandardWeeklyHours",
+              "type": "number",
+              "value": "={{ $json.StandardWeeklyHours }}"
+            },
+            {
+              "id": "d7",
+              "name": "OvertimeHours",
+              "type": "number",
+              "value": "={{ $json.OvertimeHours }}"
+            },
+            {
+              "id": "d8",
+              "name": "ThresholdStatus",
+              "type": "string",
+              "value": "={{ $json.ThresholdStatus }}"
+            },
+            {
+              "id": "d9",
+              "name": "WeekStamp",
+              "type": "string",
+              "value": "={{ $json.WeekStamp }}"
+            },
+            {
+              "id": "d10",
+              "name": "IsValidData",
+              "type": "boolean",
+              "value": "={{ $json.IsValidData }}"
+            },
+            {
+              "id": "d11",
+              "name": "AlreadyLogged",
+              "type": "boolean",
+              "value": "={{ $('Get Overtime Log').all().some(item => item.json.EmployeeName === $json.EmployeeName && item.json.WeekStamp === $json.WeekStamp) }}"
+            },
+            {
+              "id": "d12",
+              "name": "CanProceed",
+              "type": "boolean",
+              "value": "={{ $json.IsValidData && !($('Get Overtime Log').all().some(item => item.json.EmployeeName === $json.EmployeeName && item.json.WeekStamp === $json.WeekStamp)) }}"
+            },
+            {
+              "id": "d13",
+              "name": "SkipReason",
+              "type": "string",
+              "value": "={{ !$json.IsValidData ? 'Invalid Data' : ($('Get Overtime Log').all().some(item => item.json.EmployeeName === $json.EmployeeName && item.json.WeekStamp === $json.WeekStamp) ? 'Duplicate - Already Logged This Week' : '' ) }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "b78bbed4-581f-4622-b4a3-0dbaf0bffc71",
+      "name": "Check Not Duplicate",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -1664,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "cp1",
+              "leftValue": "={{ $json.CanProceed }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "3d67ce4f-8cee-4fba-b908-8ab69d3343da",
+      "name": "IF - Can Proceed?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -1424,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_SHEET_ID",
+          "mode": "list",
+          "cachedResultName": "Your sheet"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1280552487,
+          "mode": "list",
+          "cachedResultName": "Your sheet"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "EmployeeName": "={{ $json.EmployeeName }}",
+            "Department": "={{ $json.Department }}",
+            "TotalHours": "={{ $json.TotalHours }}",
+            "OvertimeHours": "={{ $json.OvertimeHours }}",
+            "Timestamp": "={{ $now.toISO() }}",
+            "Status": "={{ $json.ThresholdStatus }}",
+            "Action": "={{ 'Skipped - ' + $json.SkipReason }}",
+            "WeekStamp": "={{ $json.WeekStamp }}"
+          },
+          "matchingColumns": [],
+          "schema": [],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "4f52bdcb-8ea1-44f4-9143-f919318e5610",
+      "name": "Log Exception",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        -976,
+        432
+      ]
+    }
+  ],
+  "connections": {
+    "Weekly Schedule (Sun 6PM)": {
+      "main": [
+        [
+          {
+            "node": "Get Overtime Log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Timesheet Entries": {
+      "main": [
+        [
+          {
+            "node": "Sum Hours by Employee",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sum Hours by Employee": {
+      "main": [
+        [
+          {
+            "node": "Calculate Overtime Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calculate Overtime Status": {
+      "main": [
+        [
+          {
+            "node": "Check Not Duplicate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - Needs Flag?": {
+      "main": [
+        [
+          {
+            "node": "Overtime Escalation Agent",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Build Auto-Approval Record",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Overtime Escalation Agent": {
+      "main": [
+        [
+          {
+            "node": "Parse Agent Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model (LOCAL TEST)": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Overtime Escalation Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Agent Output": {
+      "main": [
+        [
+          {
+            "node": "Send Escalation Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Escalation Email": {
+      "main": [
+        [
+          {
+            "node": "Log Entry (Flagged)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Auto-Approval Record": {
+      "main": [
+        [
+          {
+            "node": "Log Entry (Compliant)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Not Duplicate": {
+      "main": [
+        [
+          {
+            "node": "IF - Can Proceed?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - Can Proceed?": {
+      "main": [
+        [
+          {
+            "node": "IF - Needs Flag?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Log Exception",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Overtime Log": {
+      "main": [
+        [
+          {
+            "node": "Get Timesheet Entries",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "pinData": {}
+}

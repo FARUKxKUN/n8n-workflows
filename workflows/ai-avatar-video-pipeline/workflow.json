@@ -1,0 +1,677 @@
+{
+  "name": "veed worrking version",
+  "nodes": [
+    {
+      "parameters": {
+        "formTitle": "🎬 VEED AI Video Generator",
+        "formDescription": "Fill in the details below — your talking video will be generated automatically and emailed to you!",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "What is this video about?",
+              "placeholder": "e.g. How to automate your marketing workflow with VEED and n8n"
+            },
+            {
+              "fieldLabel": "Avatar Image URL",
+              "placeholder": "https://your-image-url.com/photo.jpg (public, front-facing portrait)"
+            },
+            {
+              "fieldLabel": "Your Email Address",
+              "fieldType": "email",
+              "placeholder": "you@example.com"
+            },
+            {
+              "fieldLabel": "Script Tone",
+              "fieldType": "dropdown",
+              "fieldOptions": {
+                "values": [
+                  {
+                    "option": "High-Energy & Hype"
+                  },
+                  {
+                    "option": "Professional & Authoritative"
+                  },
+                  {
+                    "option": "Conversational & Relatable"
+                  },
+                  {
+                    "option": "Storytelling / Emotional Hook"
+                  }
+                ]
+              }
+            },
+            {
+              "fieldLabel": "Voice Style",
+              "fieldType": "dropdown",
+              "fieldOptions": {
+                "values": [
+                  {
+                    "option": "alloy"
+                  },
+                  {
+                    "option": "nova"
+                  },
+                  {
+                    "option": "shimmer"
+                  },
+                  {
+                    "option": "echo"
+                  },
+                  {
+                    "option": "onyx"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.3,
+      "position": [
+        -2864,
+        160
+      ],
+      "id": "c76375cf-b772-4073-8fc6-55393aaccf3f",
+      "name": "Enter Video Topic",
+      "notes": "STEP 1 — Fill in all 5 fields:\n• Topic: what the video is about\n• Avatar Image URL: any public image URL (Unsplash, Imgur, Google, etc.)\n• Email: where to deliver the finished video\n• Script Tone: style of the ad script\n• Voice Style: the AI voice that reads the script\n\nThe image will be automatically downloaded and re-hosted — any URL works!"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=You are a world-class direct-response copywriter who specializes in viral Instagram Reels ads.\n\nYour task: Write a jaw-dropping 30-second spoken ad script for: {{ $json['What is this video about?'] }}\n\nTone: {{ $json['Script Tone'] }}\n\nSTRUCTURE (follow exactly):\n1. HOOK (first 3 seconds) — Start with a bold, provocative or curiosity-driven opening line. Make the viewer STOP scrolling instantly.\n   - Bold claim: \"Most [target audience] are wasting X doing Y — here's the fix.\"\n   - Curiosity gap: \"Nobody talks about this, but it's the reason you're [problem].\"\n   - Direct challenge: \"If you're still doing [old way], you're leaving money on the table.\"\n\n2. PROBLEM AGITATION (5 seconds) — Quickly twist the knife. Remind them of the pain, the frustration, the wasted time.\n\n3. SOLUTION REVEAL (10 seconds) — Introduce the product/solution as the obvious answer. Be specific. Mention saving time, automating their workflow, and the transformation it delivers.\n\n4. PROOF / CREDIBILITY (5 seconds) — One punchy line of social proof, a result, or a bold outcome promise.\n\n5. CALL TO ACTION (5 seconds) — Single, urgent, crystal-clear CTA. Create FOMO. Use action words.\n\nRULES:\n- Under 80 words total — tight, punchy, no fluff\n- Written exactly as it will be SPOKEN — natural rhythm, no jargon\n- NO stage directions, scene descriptions, or formatting\n- NO emojis or symbols\n- Speak directly to marketers and creators who want to grow faster\n- Every sentence must earn its place — if it doesn't hook, agitate, or convert, cut it\n- Plain text only",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3,
+      "position": [
+        -2656,
+        160
+      ],
+      "id": "21c37520-330f-48c0-8057-bfd0925b5dce",
+      "name": "Generate Ad Script",
+      "notes": "5-part Instagram ad framework: Hook > Problem > Solution > Proof > CTA\nAdapts tone from form. Outputs clean plain text ready for the critique pass."
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "gpt-4o-mini"
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        -2704,
+        384
+      ],
+      "id": "21c2d848-8473-4cf1-915e-e1747e929547",
+      "name": "OpenAI Chat Model1"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=You are a brutal but brilliant creative director reviewing an Instagram Reels ad script.\n\nHere is the script to review:\n{{ $('Generate Ad Script').item.json.output }}\n\nYour job:\n1. Identify the 1-2 weakest lines (too generic, too slow, or missing punch)\n2. Rewrite the ENTIRE script incorporating those fixes — tighter hook, sharper CTA, same structure\n3. Keep it under 80 words\n4. Plain text only — no labels, no formatting, no explanation\n5. Output the FINAL improved script only — nothing else",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3,
+      "position": [
+        -2320,
+        160
+      ],
+      "id": "dd9ab083-001e-4b4a-9e19-7737a571c198",
+      "name": "Self-Critique & Rewrite Script",
+      "notes": "QUALITY PASS — Reviews the first draft and rewrites weak lines before sending to TTS.\nSame OpenAI model reused — no extra cost."
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "gpt-4o-mini"
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        -2464,
+        368
+      ],
+      "id": "0268ae3c-0e64-415a-9b02-2699096d8e90",
+      "name": "OpenAI Chat Model"
+    },
+    {
+      "parameters": {
+        "resource": "audio",
+        "input": "={{ $('Self-Critique & Rewrite Script').item.json.output }}",
+        "voice": "={{ $('Enter Video Topic').item.json['Voice Style'] }}",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.1,
+      "position": [
+        -1984,
+        160
+      ],
+      "id": "1894fb08-0a0c-4e8a-8fcb-1cc1b09dcbf5",
+      "name": "Generate audio",
+      "notes": "Converts the final rewritten script to speech using OpenAI TTS.\nVoice is selected by the user in the form.\n\nnova / shimmer = warm & natural. alloy = neutral. onyx = deep & authoritative. echo = balanced."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://upload.uploadcare.com/base/",
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "UPLOADCARE_PUB_KEY",
+              "value": "YOUR_UPLOADCARE_PUBLIC_KEY"
+            },
+            {
+              "name": "UPLOADCARE_STORE",
+              "value": "1"
+            },
+            {
+              "parameterType": "formBinaryData",
+              "name": "file",
+              "inputDataFieldName": "data"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        -1728,
+        160
+      ],
+      "id": "1fd2df9a-12c3-44a9-932e-6004ded77370",
+      "name": "Upload Audio to Cloud (Uploadcare)",
+      "notes": "Uploads the MP3 to Uploadcare and returns a public UUID.\nFinal audio URL: https://ucarecdn.com/{uuid}/"
+    },
+    {
+      "parameters": {
+        "url": "={{ $('Enter Video Topic').item.json['Avatar Image URL'] }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file",
+              "outputPropertyName": "imageData"
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        -1488,
+        160
+      ],
+      "id": "be54b690-0572-4b82-8dad-4fcff5459ad8",
+      "name": "Download Image",
+      "notes": "Downloads whatever image URL the user provided in the form as binary.\nAny public URL works — Unsplash, Imgur, Google Images, direct links, anything."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://upload.uploadcare.com/base/",
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "UPLOADCARE_PUB_KEY",
+              "value": "YOUR_UPLOADCARE_PUBLIC_KEY"
+            },
+            {
+              "name": "UPLOADCARE_STORE",
+              "value": "1"
+            },
+            {
+              "parameterType": "formBinaryData",
+              "name": "file",
+              "inputDataFieldName": "imageData"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        -1248,
+        160
+      ],
+      "id": "d89cf87c-b9fb-4335-966e-04e4605a146a",
+      "name": "Upload Image to Uploadcare",
+      "notes": "Re-uploads the image to Uploadcare and returns a public UUID.\nThis guarantees fal.ai can always access the image — no hotlinking or CORS issues.\nFinal image URL: https://ucarecdn.com/{uuid}/"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "4f3f275f-b457-4e36-83e5-378335c0637a",
+              "name": "image_url",
+              "value": "=https://3jrmageded.ucarecd.net/{{ $('Upload Image to Uploadcare').item.json.file }}/{{ $('Download Image').item.binary.imageData.fileName }}",
+              "type": "string"
+            },
+            {
+              "id": "fca86b6d-6fd8-48e0-8ec9-630829cf3659",
+              "name": "audio_url",
+              "value": "=https://3jrmageded.ucarecd.net/{{ $('Upload Audio to Cloud (Uploadcare)').item.json.file }}/audio.mp3",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -1008,
+        160
+      ],
+      "id": "ae0faa8a-513e-4bb1-bd65-25fe3ebf9fe0",
+      "name": "Set Avatar Image + Audio URL",
+      "notes": "Combines the two Uploadcare URLs that VEED needs:\n• image_url — from re-uploaded portrait image (guaranteed public, no hotlink issues)\n• audio_url — from uploaded MP3\n\nBoth are Uploadcare CDN URLs so fal.ai can always access them."
+    },
+    {
+      "parameters": {
+        "imageUrl": "={{ $json.image_url }}",
+        "audioUrl": "={{ $json.audio_url }}",
+        "resolution": "720p",
+        "aspectRatio": "9:16",
+        "options": {}
+      },
+      "type": "n8n-nodes-veed.veed",
+      "typeVersion": 1,
+      "position": [
+        -720,
+        160
+      ],
+      "id": "8081f1f0-d05c-4b65-80ba-c9245c3ad309",
+      "name": "Generate Talking Video (VEED Fabric 1.0)",
+      "notes": "THE STAR OF THE SHOW\n\nVEED Fabric 1.0 generates a realistic lip-synced talking video from the portrait + audio.\n\n• Resolution: 720p\n• Aspect Ratio: 9:16 (perfect for Instagram Reels)\n• Credential: fal.ai API key (free tier at fal.ai)\n\nRendering takes 2-3 minutes — the Wait node handles this."
+    },
+    {
+      "parameters": {
+        "amount": 7,
+        "unit": "minutes"
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        -480,
+        160
+      ],
+      "id": "ee005e6e-9aa4-4b76-a0ac-8080217b6c69",
+      "name": "Wait for Video to Render",
+      "notes": "Gives VEED 7 minutes to render before retrieving the result.\nIncrease to 10 minutes if video URL still comes back empty."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "aabbccdd-1122-3344-5566-778899aabbcc",
+              "leftValue": "={{ $('Generate Talking Video (VEED Fabric 1.0)').item.json.video.url }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.1,
+      "position": [
+        -240,
+        160
+      ],
+      "id": "581a40a4-2fe1-46c8-b971-c5274322806c",
+      "name": "Video URL Valid?",
+      "notes": "ERROR HANDLER — Checks if VEED returned a valid video URL.\n\nTRUE  → Email success + log to Sheets\nFALSE → Email failure so user is never left in the dark"
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $('Enter Video Topic').item.json['Your Email Address'] }}",
+        "subject": "🎬 Your AI Talking Video is Ready!",
+        "message": "=<div style=\"font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; background: #f9f9f9; border-radius: 12px;\">\n  <h1 style=\"color: #1a1a1a; font-size: 24px; margin-bottom: 8px;\">🎬 Your Video is Ready!</h1>\n  <p style=\"color: #555; font-size: 16px; margin-bottom: 24px;\">Your AI-generated talking video has been created successfully.</p>\n  <div style=\"background: #fff; border-radius: 8px; padding: 20px; margin-bottom: 20px; border-left: 4px solid #6366f1;\">\n    <p style=\"margin: 0; color: #888; font-size: 13px; text-transform: uppercase; letter-spacing: 1px;\">Topic</p>\n    <p style=\"margin: 6px 0 0; color: #1a1a1a; font-size: 16px; font-weight: bold;\">{{ $('Enter Video Topic').item.json['What is this video about?'] }}</p>\n  </div>\n  <div style=\"background: #fff; border-radius: 8px; padding: 20px; margin-bottom: 20px; border-left: 4px solid #22c55e;\">\n    <p style=\"margin: 0; color: #888; font-size: 13px; text-transform: uppercase; letter-spacing: 1px;\">Your Script</p>\n    <p style=\"margin: 6px 0 0; color: #333; font-size: 15px; line-height: 1.6; font-style: italic;\">\"{{ $('Self-Critique & Rewrite Script').item.json.output }}\"</p>\n  </div>\n  <a href=\"{{ $('Generate Talking Video (VEED Fabric 1.0)').item.json.video.url }}\" style=\"display: block; background: #6366f1; color: white; text-align: center; padding: 16px 24px; border-radius: 8px; font-size: 18px; font-weight: bold; text-decoration: none; margin-bottom: 20px;\">&#9654; Watch Your Video</a>\n  <p style=\"color: #aaa; font-size: 13px; text-align: center;\">Made with VEED Fabric 1.0 + n8n &middot; No camera. No filming. Just automation.</p>\n</div>",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "5e7135a9-1225-4e9a-8bc0-46e07d1bbbf1",
+      "name": "Email: Video Ready",
+      "notes": "SUCCESS EMAIL — Styled HTML email containing:\n• Video topic\n• Final script\n• Big Watch Your Video button\n\nGoes to the email entered in the form."
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $('Enter Video Topic').item.json['Your Email Address'] }}",
+        "subject": "⚠️ Video Generation Issue — Please Try Again",
+        "message": "=<div style=\"font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; background: #fff8f8; border-radius: 12px;\">\n  <h1 style=\"color: #dc2626; font-size: 22px;\">&#9888; Something went wrong</h1>\n  <p style=\"color: #555; font-size: 16px;\">We ran into an issue generating your talking video. This sometimes happens when the AI renderer is busy.</p>\n  <div style=\"background: #fff; border-radius: 8px; padding: 20px; margin: 20px 0; border-left: 4px solid #dc2626;\">\n    <p style=\"margin: 0; color: #888; font-size: 13px;\">Topic submitted</p>\n    <p style=\"margin: 6px 0 0; color: #1a1a1a; font-weight: bold;\">{{ $('Enter Video Topic').item.json['What is this video about?'] }}</p>\n  </div>\n  <p style=\"color: #555; font-size: 15px;\"><strong>What to do:</strong> Please resubmit the form in a few minutes. If the issue persists, try increasing the Wait node timer to 10 minutes.</p>\n  <p style=\"color: #aaa; font-size: 13px; margin-top: 24px;\">VEED x n8n Auto Video Generator</p>\n</div>",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        288
+      ],
+      "id": "d1208ad7-d01e-4981-a100-5fb710240761",
+      "name": "Email: Generation Failed",
+      "notes": "FAILURE EMAIL — Sent when VEED returns an empty video URL.\nTells the user what happened and how to retry."
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_SHEET_ID",
+          "mode": "list",
+          "cachedResultName": "Your sheet"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Your sheet"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Timestamp": "={{ new Date().toISOString() }}",
+            "Topic": "={{ $('Enter Video Topic').item.json['What is this video about?'] }}",
+            "Tone": "={{ $('Enter Video Topic').item.json['Script Tone'] }}",
+            "Voice": "={{ $('Enter Video Topic').item.json['Voice Style'] }}",
+            "Script": "={{ $('Self-Critique & Rewrite Script').item.json.output }}",
+            "Video URL": "={{ $('Generate Talking Video (VEED Fabric 1.0)').item.json.video_url }}",
+            "Email": "={{ $('Enter Video Topic').item.json['Your Email Address'] }}",
+            "Status": "Success"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "Timestamp",
+              "displayName": "Timestamp",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Topic",
+              "displayName": "Topic",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Tone",
+              "displayName": "Tone",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Voice",
+              "displayName": "Voice",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Script",
+              "displayName": "Script",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Video URL",
+              "displayName": "Video URL",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Email",
+              "displayName": "Email",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Status",
+              "displayName": "Status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.4,
+      "position": [
+        208,
+        0
+      ],
+      "id": "a810ca88-48b5-4cd2-b303-2a2b29a898bb",
+      "name": "Log to Google Sheets",
+      "notes": "CONTENT ARCHIVE — Appends one row per successful video:\nTimestamp, Topic, Tone, Voice, Script, Video URL, Email, Status"
+    }
+  ],
+  "connections": {
+    "Enter Video Topic": {
+      "main": [
+        [
+          {
+            "node": "Generate Ad Script",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model1": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Generate Ad Script",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Ad Script": {
+      "main": [
+        [
+          {
+            "node": "Self-Critique & Rewrite Script",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Self-Critique & Rewrite Script",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Self-Critique & Rewrite Script": {
+      "main": [
+        [
+          {
+            "node": "Generate audio",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate audio": {
+      "main": [
+        [
+          {
+            "node": "Upload Audio to Cloud (Uploadcare)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload Audio to Cloud (Uploadcare)": {
+      "main": [
+        [
+          {
+            "node": "Download Image",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download Image": {
+      "main": [
+        [
+          {
+            "node": "Upload Image to Uploadcare",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload Image to Uploadcare": {
+      "main": [
+        [
+          {
+            "node": "Set Avatar Image + Audio URL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Avatar Image + Audio URL": {
+      "main": [
+        [
+          {
+            "node": "Generate Talking Video (VEED Fabric 1.0)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Talking Video (VEED Fabric 1.0)": {
+      "main": [
+        [
+          {
+            "node": "Wait for Video to Render",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait for Video to Render": {
+      "main": [
+        [
+          {
+            "node": "Video URL Valid?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Video URL Valid?": {
+      "main": [
+        [
+          {
+            "node": "Email: Video Ready",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Email: Generation Failed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Email: Video Ready": {
+      "main": [
+        [
+          {
+            "node": "Log to Google Sheets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "pinData": {}
+}

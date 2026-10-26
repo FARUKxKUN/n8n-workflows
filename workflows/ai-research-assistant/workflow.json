@@ -1,0 +1,366 @@
+{
+  "name": "Ai Research Assistant",
+  "nodes": [
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
+        },
+        "documentId": {
+          "__rl": true,
+          "value": "https://docs.google.com/spreadsheets/d/1BCSddY8D7I6H-ZPFBwvG44GlwPMtrwFGRA00tiKJ_Xs/edit?gid=734847525#gid=734847525",
+          "mode": "url"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "734847525",
+          "mode": "id"
+        },
+        "event": "rowAdded",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheetsTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "f288b487-1774-4633-8a9c-7b4d093bee4d",
+      "name": "Google Sheets Trigger"
+    },
+    {
+      "parameters": {
+        "url": "https://en.wikipedia.org/w/api.php",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "action",
+              "value": "query"
+            },
+            {
+              "name": "list",
+              "value": "search"
+            },
+            {
+              "name": "srsearch",
+              "value": "={{$json.Subject }}"
+            },
+            {
+              "name": "format",
+              "value": "json"
+            },
+            {
+              "name": "srlimit",
+              "value": "10"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        416,
+        0
+      ],
+      "id": "49090bcf-24e8-4fb1-85f6-c76e88caff14",
+      "name": "Wiki Search"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Get Wikipedia search results\nconst wikiData = $input.first().json;\nlet searchResults = [];\n\n// Extract search results\nif (wikiData.query && wikiData.query.search) {\n  wikiData.query.search.forEach((result, i) => {\n    searchResults.push({\n      title: result.title,\n      description: result.snippet.replace(/<[^>]*>/g, ''), // Remove HTML tags\n      url: `https://en.wikipedia.org/wiki/${result.title.replace(/ /g, '_')}`\n    });\n  });\n}\n\n// Format for AI consumption\nconst formattedText = searchResults.map((result, i) => \n  `${i + 1}. ${result.title}\\n${result.description}\\nSource: ${result.url}\\n`\n).join('\\n');\n\n// Get data from previous nodes - MATCH THE NEW FIELD NAMES\nconst previousData = $('Clean from Data').first().json;\n\n// Return the data\nreturn [{\n  json: {\n    subject: previousData.subject,        // lowercase\n    email: previousData.email,            // lowercase\n    report_type: previousData.report_type,\n    searchResults: searchResults,\n    formattedSearchText: formattedText,\n    totalResults: searchResults.length\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        624,
+        0
+      ],
+      "id": "37a6709f-352d-4525-ba6f-39df64e5b854",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "f3e37c1b-833e-45b9-a0b2-b9c932347379",
+              "name": "subject",
+              "value": "={{ $json['What topic do you want me to research?'] }}",
+              "type": "string"
+            },
+            {
+              "id": "b3a283c8-2b59-4bfd-a711-4b35ac7718b4",
+              "name": "Email",
+              "value": "={{ $json['Your email address'] }}",
+              "type": "string"
+            },
+            {
+              "id": "64d82f56-8e92-4f0b-bbf1-dd91571842d9",
+              "name": "report_type",
+              "value": "={{ $json['How Deep? '] }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        208,
+        0
+      ],
+      "id": "f639489d-37dc-408d-8d22-ced639d6b2d4",
+      "name": "Clean from Data"
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.first().json;\n\nconst requestBody = {\n  model: \"llama-3.3-70b-versatile\",  // UPDATED MODEL\n  messages: [\n    {\n      role: \"system\",\n      content: \"You are a professional research assistant. Create comprehensive, well-structured research reports based on the information provided.\"\n    },\n    {\n      role: \"user\",\n      content: `Create a ${data.report_type} research report on: ${data.subject}\\n\\nBased on these search results:\\n${data.formattedSearchText}\\n\\nReport requirements:\\n- Quick: 300-500 words with key findings\\n- Standard: 1000-1500 words with analysis\\n- Extended: 2500+ words with deep analysis and sources`\n    }\n  ],\n  temperature: 0.7,\n  max_tokens: 4000\n};\n\nreturn [{\n  json: requestBody\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        848,
+        0
+      ],
+      "id": "c27a62c0-8dce-454a-b10c-e4541143e844",
+      "name": "Prepare Groq Request"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.groq.com/openai/v1/chat/completions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer YOUR_GROQ_API_KEY"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1072,
+        0
+      ],
+      "id": "cd3f7dec-5cf9-4a49-a986-157cf0e214c1",
+      "name": "groq"
+    },
+    {
+      "parameters": {
+        "content": "AI RESEARCH ASSISTANT 1.0",
+        "height": 480,
+        "width": 400
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -64,
+        -176
+      ],
+      "typeVersion": 1,
+      "id": "555333ae-8dc1-4720-9da1-4d606249596d",
+      "name": "Sticky Note"
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $('Clean from Data').item.json.Email }}",
+        "subject": "={{ $json.subject }}",
+        "message": "={{ $json.html }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        1680,
+        0
+      ],
+      "id": "dc40fab5-966f-40c2-a2dd-5fadf10fb344",
+      "name": "Send a message"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Get the AI response from Groq\nconst groqResponse = $input.first().json;\n\n// Extract the generated report\nconst report = groqResponse.choices[0].message.content;\n\n// Get the original data (subject, email, etc.)\nconst originalData = $('Code in JavaScript').first().json;\n\n// Return everything together\nreturn [{\n  json: {\n    subject: originalData.subject,\n    email: originalData.email,\n    report_type: originalData.report_type,\n    report: report,\n    sources: originalData.searchResults\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1280,
+        0
+      ],
+      "id": "c5878111-5d18-4dbc-8668-fafb5b100a2a",
+      "name": "Format Response"
+    },
+    {
+      "parameters": {
+        "content": "MAIL SENDER\n",
+        "height": 480,
+        "width": 704,
+        "color": 4
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        1216,
+        -176
+      ],
+      "typeVersion": 1,
+      "id": "a8c76566-19ce-4043-87c1-d77be56d7f94",
+      "name": "Sticky Note1"
+    },
+    {
+      "parameters": {
+        "content": "GROQ AI ANALYZER\n",
+        "height": 480,
+        "width": 432,
+        "color": 5
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        784,
+        -176
+      ],
+      "typeVersion": 1,
+      "id": "d10b928c-90d0-477f-8563-57c635af2920",
+      "name": "Sticky Note2"
+    },
+    {
+      "parameters": {
+        "content": "Research Step\n",
+        "height": 480,
+        "width": 448,
+        "color": 3
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        336,
+        -176
+      ],
+      "typeVersion": 1,
+      "id": "6a66f341-b0e8-4e74-9475-0320a187bb89",
+      "name": "Sticky Note3"
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.first().json;\n\n// Map report type to readable name\nconst reportTypeNames = {\n  'quick': 'Quick Summary',\n  'standard': 'Standard Report',\n  'extended': 'Extended Report'\n};\n\n// Create HTML email\nconst emailHTML = `\n<!DOCTYPE html>\n<html>\n<head>\n  <style>\n    body { \n      font-family: Arial, sans-serif; \n      line-height: 1.6; \n      color: #333; \n      max-width: 800px; \n      margin: 0 auto; \n      padding: 20px; \n      background-color: #f5f5f5;\n    }\n    .email-container {\n      background: white;\n      border-radius: 10px;\n      overflow: hidden;\n      box-shadow: 0 2px 10px rgba(0,0,0,0.1);\n    }\n    .header { \n      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); \n      color: white; \n      padding: 30px; \n      text-align: center; \n    }\n    .header h1 { \n      margin: 0; \n      font-size: 28px;\n    }\n    .badge { \n      background: rgba(255,255,255,0.2); \n      padding: 5px 15px; \n      border-radius: 20px; \n      display: inline-block; \n      margin-top: 10px; \n      font-size: 14px;\n    }\n    .content { \n      padding: 30px; \n    }\n    .content h2 {\n      color: #667eea;\n      border-bottom: 2px solid #667eea;\n      padding-bottom: 10px;\n    }\n    .report { \n      background: #f9f9f9; \n      padding: 20px; \n      border-left: 4px solid #667eea; \n      margin: 20px 0; \n      white-space: pre-wrap;\n      line-height: 1.8;\n    }\n    .sources {\n      margin-top: 30px;\n      padding: 20px;\n      background: #f0f3ff;\n      border-radius: 8px;\n    }\n    .sources h3 {\n      color: #667eea;\n      margin-top: 0;\n    }\n    .sources ul {\n      list-style: none;\n      padding: 0;\n    }\n    .sources li {\n      padding: 8px 0;\n      border-bottom: 1px solid #e0e0e0;\n    }\n    .sources li:last-child {\n      border-bottom: none;\n    }\n    .sources a {\n      color: #667eea;\n      text-decoration: none;\n    }\n    .sources a:hover {\n      text-decoration: underline;\n    }\n    .footer { \n      text-align: center; \n      color: #666; \n      padding: 20px;\n      font-size: 14px;\n      background: #f5f5f5;\n    }\n  </style>\n</head>\n<body>\n  <div class=\"email-container\">\n    <div class=\"header\">\n      <h1>🤖 AI Research Assistant</h1>\n      <div class=\"badge\">${reportTypeNames[data.report_type] || data.report_type}</div>\n    </div>\n    \n    <div class=\"content\">\n      <h2>Research Report: ${data.subject}</h2>\n      \n      <div class=\"report\">${data.report.replace(/\\n/g, '<br>')}</div>\n      \n      <div class=\"sources\">\n        <h3>📚 Sources Used:</h3>\n        <ul>\n          ${data.sources.map(source => `\n            <li>\n              <strong>${source.title}</strong><br>\n              <a href=\"${source.url}\" target=\"_blank\">${source.url}</a>\n            </li>\n          `).join('')}\n        </ul>\n      </div>\n    </div>\n    \n    <div class=\"footer\">\n      <p>Generated by AI Research Assistant • Powered by n8n & Groq</p>\n    </div>\n  </div>\n</body>\n</html>\n`;\n\n// Create plain text version\nconst plainText = `\nResearch Report: ${data.subject}\nReport Type: ${reportTypeNames[data.report_type] || data.report_type}\n\n${data.report}\n\nSources Used:\n${data.sources.map((source, i) => `${i + 1}. ${source.title}\\n   ${source.url}`).join('\\n')}\n\n---\nGenerated by AI Research Assistant\n`;\n\nreturn [{\n  json: {\n    to: data.email,\n    subject: `Research Report: ${data.subject}`,\n    html: emailHTML,\n    text: plainText\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1488,
+        0
+      ],
+      "id": "228e2007-aa51-41db-a7b3-d64bfbee3739",
+      "name": "Mail Creation"
+    }
+  ],
+  "connections": {
+    "Google Sheets Trigger": {
+      "main": [
+        [
+          {
+            "node": "Clean from Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wiki Search": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Clean from Data": {
+      "main": [
+        [
+          {
+            "node": "Wiki Search",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Prepare Groq Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Groq Request": {
+      "main": [
+        [
+          {
+            "node": "groq",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "groq": {
+      "main": [
+        [
+          {
+            "node": "Format Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Response": {
+      "main": [
+        [
+          {
+            "node": "Mail Creation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mail Creation": {
+      "main": [
+        [
+          {
+            "node": "Send a message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}

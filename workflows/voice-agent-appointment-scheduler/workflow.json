@@ -1,0 +1,318 @@
+{
+  "name": "📞 Schedule Appointment Agent",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "get_availability",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -1520,
+        80
+      ],
+      "id": "9c1e0844-8967-4bb1-91d2-bf41ef694ddd",
+      "name": "Webhook"
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "={\n  \"message\": \"Great news, {{ $('Merge').first().json.body.preferred_timeframe }} is available.\"\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        160
+      ],
+      "id": "97aa9db6-091e-4497-97be-266775516fa0",
+      "name": "Respond to Webhook"
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "calendar": {
+          "__rl": true,
+          "value": "you@example.com",
+          "mode": "list",
+          "cachedResultName": "Your sheet"
+        },
+        "timeMin": "={{ $json.output.start_time }}",
+        "timeMax": "={{ $json.output.end_time }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 1.3,
+      "position": [
+        -720,
+        160
+      ],
+      "id": "fab3699e-aa2a-412f-9e55-00d02d280eed",
+      "name": "Google Calendar",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Get the requested time from Information Extractor\nconst requestedTime = $('Information Extractor').first().json.output.requested_time;\n\n// Get calendar events from previous node\nconst calendarEvents = $input.all();\n\n// Business hours configuration\nconst BUSINESS_START = 9; // 9 AM\nconst BUSINESS_END = 17;   // 5 PM\nconst APPOINTMENT_DURATION = 60; // 60 minutes\n\n// Function to convert time string to hour number\nfunction timeToHour(timeStr) {\n  if (timeStr.includes('T')) {\n    // ISO format: \"2025-07-14T15:00:00+01:00\"\n    return parseInt(timeStr.split('T')[1].split(':')[0]);\n  } else if (timeStr.includes(':')) {\n    // HH:MM format: \"15:00\"\n    return parseInt(timeStr.split(':')[0]);\n  }\n  return parseInt(timeStr);\n}\n\n// Function to format hour as time string\nfunction formatTime(hour) {\n  return hour.toString().padStart(2, '0') + ':00';\n}\n\n// Extract busy hours from calendar events\nconst busyHours = [];\ncalendarEvents.forEach(event => {\n  if (event.json && event.json.start && event.json.start.dateTime) {\n    const startHour = timeToHour(event.json.start.dateTime);\n    busyHours.push(startHour);\n  }\n});\n\n// Create array of all business hours\nconst allBusinessHours = [];\nfor (let hour = BUSINESS_START; hour < BUSINESS_END; hour++) {\n  allBusinessHours.push(hour);\n}\n\n// Calculate available hours (remove busy hours)\nconst availableHours = allBusinessHours.filter(hour => !busyHours.includes(hour));\n\n// Function to check if requested time is available\nfunction isRequestedTimeAvailable(requestedTime, availableHours) {\n  if (requestedTime === 'any') {\n    return availableHours.length > 0;\n  }\n  \n  if (requestedTime === 'morning') {\n    // Morning: 9 AM - 12 PM\n    const morningHours = availableHours.filter(hour => hour >= 9 && hour < 12);\n    return morningHours.length > 0;\n  }\n  \n  if (requestedTime === 'afternoon') {\n    // Afternoon: 12 PM - 5 PM\n    const afternoonHours = availableHours.filter(hour => hour >= 12 && hour < 17);\n    return afternoonHours.length > 0;\n  }\n  \n  // Specific time (e.g., \"15:00\")\n  const requestedHour = timeToHour(requestedTime);\n  return availableHours.includes(requestedHour);\n}\n\n// Function to group consecutive hours into intervals\nfunction groupConsecutiveHours(hours) {\n  if (hours.length === 0) return [];\n  \n  const sorted = hours.sort((a, b) => a - b);\n  const groups = [];\n  let currentGroup = [sorted[0]];\n  \n  for (let i = 1; i < sorted.length; i++) {\n    if (sorted[i] === sorted[i-1] + 1) {\n      currentGroup.push(sorted[i]);\n    } else {\n      groups.push(currentGroup);\n      currentGroup = [sorted[i]];\n    }\n  }\n  groups.push(currentGroup);\n  \n  return groups;\n}\n\n// Function to format available hours as readable text\nfunction formatAvailableSlots(availableHours) {\n  if (availableHours.length === 0) {\n    return \"no available slots\";\n  }\n  \n  const groups = groupConsecutiveHours(availableHours);\n  const formattedGroups = groups.map(group => {\n    if (group.length === 1) {\n      // Single hour\n      return `${formatTime(group[0])} AM`.replace(/(\\d{2}):00 AM/, (match, hour) => {\n        const h = parseInt(hour);\n        if (h === 12) return \"12:00 PM\";\n        if (h > 12) return `${h-12}:00 PM`;\n        if (h === 0) return \"12:00 AM\";\n        return `${h}:00 AM`;\n      });\n    } else {\n      // Range of hours\n      const start = group[0];\n      const end = group[group.length - 1];\n      \n      const formatHour = (hour) => {\n        if (hour === 12) return \"12:00 PM\";\n        if (hour > 12) return `${hour-12}:00 PM`;\n        if (hour === 0) return \"12:00 AM\";\n        return `${hour}:00 AM`;\n      };\n      \n      return `from ${formatHour(start)} to ${formatHour(end)}`;\n    }\n  });\n  \n  if (formattedGroups.length === 1) {\n    return formattedGroups[0];\n  } else if (formattedGroups.length === 2) {\n    return formattedGroups.join(' and ');\n  } else {\n    const lastGroup = formattedGroups.pop();\n    return formattedGroups.join(', ') + ', and ' + lastGroup;\n  }\n}\n\n// Function to get the target date from the requested time context\nfunction getTargetDate() {\n  // This should come from the Information Extractor output\n  const extractorOutput = $('Information Extractor').first().json.output;\n  if (extractorOutput.start_time) {\n    return extractorOutput.start_time.split('T')[0];\n  }\n  return 'the requested date';\n}\n\n// Function to create ISO datetime string\nfunction createISODateTime(requestedTime, baseDateTimeISO) {\n  const baseDate = baseDateTimeISO.split('T')[0]; // Extract date part\n  const timezone = baseDateTimeISO.substring(baseDateTimeISO.lastIndexOf('+')); // Extract timezone\n  return `${baseDate}T${requestedTime}:00${timezone}`;\n}\n\n// Function to add hours to ISO datetime string\nfunction addHoursToISODateTime(isoDateTime, hours) {\n  const [datePart, timePart] = isoDateTime.split('T');\n  const [timeOnly, timezone] = timePart.split('+');\n  const [hour, minute, second] = timeOnly.split(':');\n  \n  const newHour = parseInt(hour) + hours;\n  const formattedHour = newHour.toString().padStart(2, '0');\n  \n  return `${datePart}T${formattedHour}:${minute}:${second}+${timezone}`;\n}\n\n// Main logic\nconst isAvailable = isRequestedTimeAvailable(requestedTime, availableHours);\nconst targetDate = getTargetDate();\n\nlet response;\n\nif (isAvailable) {\n  // Get the base start_time for date and timezone\n  const baseStartTime = $('Information Extractor').first().json.output.start_time;\n  \n  // Create start time in ISO format\n  const startTime = createISODateTime(requestedTime, baseStartTime);\n  \n  // Create end time (1 hour later)\n  const endTime = addHoursToISODateTime(startTime, 1);\n  \n  response = {\n    available: true,\n    message: `Yes, ${requestedTime === 'any' ? 'appointments are' : requestedTime + ' is'} available.`,\n    start_time: startTime,\n    end_time: endTime\n  };\n} else {\n  const availableSlots = formatAvailableSlots(availableHours);\n  \n  // Format the date nicely (without year)\n  const formatDate = (dateStr) => {\n    const date = new Date(dateStr + 'T00:00:00');\n    const options = { weekday: 'long', month: 'long', day: 'numeric' };\n    return date.toLocaleDateString('en-US', options);\n  };\n  \n  const formattedDate = formatDate(targetDate);\n  \n  response = {\n    available: false,\n    message: `For ${formattedDate}, we have ${availableSlots} available.`\n  };\n}\n\n// Return the response\nreturn [response];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -496,
+        160
+      ],
+      "id": "d521d98b-db28-4b5b-9915-5b6ca20d0c0e",
+      "name": "Code"
+    },
+    {
+      "parameters": {
+        "text": "={{ $json.body.preferred_timeframe }}",
+        "schemaType": "fromJson",
+        "jsonSchemaExample": "{\n  \"start_time\": \"2025-07-14T09:00:00+01:00\",\n  \"end_time\": \"2025-07-14T17:00:00+01:00\", \n  \"requested_time\": \"15:00\"\n}",
+        "options": {
+          "systemPromptTemplate": "=You are an expert date/time parser for a business appointment system.\n\n**Current date and time:** {{ $now }}\n**Today is:** {{ $now.format('dddd, MMMM Do, YYYY') }}\n**Current day of week:** {{ $now.format('dddd') }}\n**Business timezone:** {{ \"Asia/Kolkata (IST)\" }}\n\n\n\n\n**Business hours:** 9:00 AM - 5:00 PM, Monday through Friday\n\n## Your Task\nParse the customer's preferred timeframe and extract exactly three fields. You must output ONLY the field values, not JSON format.\n\n## Date Calculation Rules\n\n### Reference for calculations:\n- Current date from above context\n- Always use year 2025\n- Calculate the exact date (e.g., 2025-07-14, 2025-07-21, etc.)\n\n### Date parsing logic:\n- **\"tomorrow\"** = current date + 1 day\n- **\"today\"** = current date\n- **\"this [day]\"** = that day in the current week\n- **\"next week\"** = the week starting after the current week ends\n- **\"[day] next week\"** = that specific day in next week (the week AFTER current week)\n- **\"next [day]\"** = the next occurrence of that day (could be this week or next)\n- **\"[day]\"** (alone) = next occurrence of that day\n\n### Time parsing:\n- \"3pm\", \"3 pm\", \"three pm\", \"three p.m.\" → \"15:00\"\n- \"10am\", \"10 am\", \"ten am\" → \"10:00\"  \n- \"morning\" → \"morning\"\n- \"afternoon\" → \"afternoon\"\n- \"evening\" → \"evening\"\n- No time → \"any\"\n\n## Critical Validation Steps:\n1. **Calculate the EXACT date** (like 2025-07-14, not 2025-MM-DD)\n2. **Verify day of week matches** - if input says \"Monday\", your date must be a Monday\n3. **Use same date for both start_time and end_time**\n4. **Always use +01:00 timezone**\n\n## Output Format Requirements:\nYou must extract exactly these three fields:\n\n**start_time**: The target date at 09:00:00{{ \"Asia/Kolkata (IST)\" }}\n (format: YYYY-MM-DDTØ9:00:00){{ \"Asia/Kolkata (IST)\" }}\n\n**end_time**: The target date at 17:00:00{{ \"Asia/Kolkata (IST)\" }}\n (format: YYYY-MM-DDTØ17:00:00}{{ \"Asia/Kolkata (IST)\" }}\n  \n**requested_time**: The specific time in 24-hour format (HH:MM) or period (morning/afternoon/evening/any)\n\n## Example for \"Monday next week at three p.m.\":\nIf today is Sunday July 13, 2025:\n- \"Monday next week\" = Monday July 21, 2025 (the Monday in the week after current week)\n- \"three p.m.\" = \"15:00\"\n\nExpected output format for the three fields:\nstart_time: 2025-07-21T09:00:00{{ \"Asia/Kolkata (IST)\" }}\n\nend_time: 2025-07-21T17:00:00{{ \"Asia/Kolkata (IST)\" }}\n\nrequested_time: 15:00\n\n## CRITICAL REQUIREMENTS:\n- Calculate actual dates, not placeholders\n- Verify the calculated date is the correct day of the week\n- Use the same date for both start_time and end_time\n- Format times in 24-hour format (15:00 not 3pm)\n- Always use {{ \"Asia/Kolkata (IST)\" }}\n timezone ({{ \"Asia/Kolkata (IST)\" }}\n)\n- Always use year 2025\n\n## IMPORTANT: \n\"Monday next week\" means the Monday in the week that comes AFTER the current week, not the upcoming Monday in the current week.\n\nParse the input and extract the three required fields with actual calculated dates."
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.informationExtractor",
+      "typeVersion": 1,
+      "position": [
+        -1088,
+        160
+      ],
+      "id": "8d42bd22-b130-4298-8bdb-38d1c6bf32a8",
+      "name": "Information Extractor"
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "={\n  \"message\": \"Unfortunatly that time is not available, however {{ $json.message }}\"\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        336
+      ],
+      "id": "c0a7d4f4-4df9-4ca4-ba64-dbc00c2fc837",
+      "name": "Respond to Webhook2"
+    },
+    {
+      "parameters": {
+        "calendar": {
+          "__rl": true,
+          "value": "you@example.com",
+          "mode": "list",
+          "cachedResultName": "Your sheet"
+        },
+        "start": "={{ $json.start_time }}",
+        "end": "={{ $json.end_time }}",
+        "additionalFields": {
+          "description": "=Name:  {{ $('Webhook1').first().json.body.customer_name }}\nPhone Number: {{ $('Webhook1').first().json.body.customer_phone }}\nEmail: {{ $('Webhook1').first().json.body.customer_email }}\nDescription: {{ $('Webhook1').first().json.body.description }}\n",
+          "summary": "={{ $('Webhook1').first().json.body.service_type }} for {{ $('Webhook1').first().json.body.customer_name }}"
+        }
+      },
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 1.3,
+      "position": [
+        0,
+        0
+      ],
+      "id": "30798d87-4e88-4623-9a85-0713d271cd60",
+      "name": "Google Calendar1"
+    },
+    {
+      "parameters": {
+        "mode": "expression",
+        "numberOutputs": 3,
+        "output": "={{\n  $json.available === false ? 2 :\n  (function() {\n    try {\n      if ($json.available === true && $('Webhook1').first()?.json?.body?.service_type && $('Webhook1').first().json.body.service_type !== \"\") {\n        return 0;\n      }\n    } catch (e) {}\n    \n    try {\n      if ($json.available === true && $('Webhook').first()?.json?.body?.preferred_timeframe && $('Webhook').first().json.body.preferred_timeframe !== \"\") {\n        return 1;\n      }\n    } catch (e) {}\n    \n    return 2;\n  })()\n}}\n\n"
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        -288,
+        160
+      ],
+      "id": "54ccfb5d-43ac-4d71-942d-7639f29494ca",
+      "name": "Switch"
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "={\n  \"message\": \"All set, you are booked for {{ $('Merge').first().json.body.preferred_timeframe }}.\"\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.2,
+      "position": [
+        208,
+        0
+      ],
+      "id": "5d9743c6-f375-4176-a257-729d7d79eec4",
+      "name": "Respond to Webhook4"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "book_appointment",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -1520,
+        272
+      ],
+      "id": "60a63e14-0c47-431a-941c-d2c33e07bf1d",
+      "name": "Webhook1"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.1,
+      "position": [
+        -1296,
+        160
+      ],
+      "id": "5346323e-3324-4d7e-a61b-0d178e634bf0",
+      "name": "Merge"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        -1120,
+        368
+      ],
+      "id": "a73ae794-00bb-4c7b-9b5d-959b800437d3",
+      "name": "Google Gemini Chat Model"
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Calendar": {
+      "main": [
+        [
+          {
+            "node": "Code",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code": {
+      "main": [
+        [
+          {
+            "node": "Switch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Information Extractor": {
+      "main": [
+        [
+          {
+            "node": "Google Calendar",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Calendar1": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook4",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch": {
+      "main": [
+        [
+          {
+            "node": "Google Calendar1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond to Webhook2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook1": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge": {
+      "main": [
+        [
+          {
+            "node": "Information Extractor",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Information Extractor",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}

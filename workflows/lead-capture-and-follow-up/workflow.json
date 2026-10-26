@@ -1,0 +1,556 @@
+{
+  "name": "Tbibia - Lead machine",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## 1. New lead\nWebhook POST /webhook/tbibia-lead\nBody: name, phone, clinic, city, email, source, message",
+        "width": 1900,
+        "height": 520
+      },
+      "id": "b7c0de00-0000-4000-8000-000000000001",
+      "name": "Note 1",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -60,
+        -160
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "tbibia-lead",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "b7c0de00-0000-4000-8000-000000000002",
+      "name": "New lead",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Normalize the incoming lead. Invalid leads (no name or phone) are dropped.\nconst out = [];\nfor (const item of $input.all()) {\n  const b = item.json.body ?? item.json;\n  const name = String(b.name ?? '').trim();\n  let phone = String(b.phone ?? '').replace(/\\D/g, '');\n  if (phone.length === 8) phone = '216' + phone; // local Tunisian number\n  if (!name || phone.length < 11 || phone.length > 15) continue;\n  out.push({\n    json: {\n      receivedAt: new Date().toISOString(),\n      name: name.slice(0, 80),\n      phone: '+' + phone,\n      clinic: String(b.clinic ?? '').trim().slice(0, 100),\n      city: String(b.city ?? '').trim().slice(0, 50),\n      email: String(b.email ?? '').trim().slice(0, 100),\n      source: String(b.source ?? 'site').trim().toLowerCase().slice(0, 30),\n      message: String(b.message ?? '').trim().slice(0, 500),\n    },\n  });\n}\nreturn out;"
+      },
+      "id": "b7c0de00-0000-4000-8000-000000000004",
+      "name": "Clean lead",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "mode": "url",
+          "value": "YOUR_SHEET_ID"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Leads"
+        },
+        "options": {},
+        "filtersUI": {
+          "values": [
+            {
+              "lookupColumn": "phone",
+              "lookupValue": "={{ $json.phone }}"
+            }
+          ]
+        }
+      },
+      "id": "b7c0de00-0000-4000-8000-000000000005",
+      "name": "Already in sheet?",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        440,
+        0
+      ],
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "b7c0de00-0000-4000-8000-000000000006",
+              "leftValue": "={{ $json.phone }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "empty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "b7c0de00-0000-4000-8000-000000000007",
+      "name": "Is new?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        660,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "anthropic-version",
+              "value": "2023-06-01"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: 'claude-haiku-4-5-20251001', max_tokens: 300, messages: [{ role: 'user', content: \"Tu es Faruk, fondateur de Tbibia, un logiciel de gestion pour cabinets dentaires en Tunisie (agenda, fiches patients, radios, factures, rappels WhatsApp, IA intégrée, 50 DT HT/mois, essai gratuit 7 jours). Écris UN message WhatsApp court (3 phrases max) en français, chaleureux et professionnel, pour répondre à ce dentiste qui vient de laisser ses coordonnées. Propose une démo de 15 minutes. Pas de tirets longs, pas d'emoji, pas de signature. Réponds uniquement avec le message.\" + '\\n\\nLead : ' + JSON.stringify($('Clean lead').first().json) }] }) }}",
+        "options": {
+          "timeout": 20000
+        }
+      },
+      "id": "b7c0de00-0000-4000-8000-000000000008",
+      "name": "AI writes message",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        880,
+        -80
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Score the lead and build the final row. Falls back to a template if the AI call failed.\nconst lead = $('Clean lead').first().json;\nconst ai = $input.first().json;\nconst aiText = ai?.content?.[0]?.text?.trim();\n\nconst firstName = lead.name.replace(/^dr\\.?\\s*/i, '').split(' ')[0];\nconst fallback = `Bonjour Dr ${firstName}, c'est Faruk de Tbibia. Merci pour votre demande ! Je peux vous montrer Tbibia en 15 minutes cette semaine. Quel créneau vous arrange ?`;\nconst text = aiText || fallback;\n\nconst BIG_CITIES = ['tunis', 'sfax', 'sousse', 'ariana', 'nabeul', 'monastir', 'bizerte', 'ben arous', 'la marsa'];\nconst WARM_SOURCES = ['chatgpt', 'google', 'referral', 'recommandation', 'demo'];\nconst BUYING_WORDS = /prix|tarif|démo|demo|essai|abonnement|combien/i;\n\nlet score = 0;\nif (lead.clinic) score += 1;\nif (BIG_CITIES.includes(lead.city.toLowerCase())) score += 1;\nif (lead.email) score += 1;\nif (WARM_SOURCES.includes(lead.source)) score += 1;\nif (BUYING_WORDS.test(lead.message)) score += 2;\n\nconst digits = lead.phone.replace(/\\D/g, '');\nreturn [{\n  json: {\n    receivedAt: lead.receivedAt,\n    name: lead.name,\n    phone: lead.phone,\n    clinic: lead.clinic,\n    city: lead.city,\n    email: lead.email,\n    source: lead.source,\n    message: lead.message,\n    score,\n    priority: score >= 3 ? 'chaud' : 'normal',\n    status: 'nouveau',\n    lastContactAt: '',\n    followUps: 0,\n    aiMessage: text,\n    whatsappLink: `https://wa.me/${digits}?text=${encodeURIComponent(text)}`,\n  },\n}];"
+      },
+      "id": "b7c0de00-0000-4000-8000-000000000009",
+      "name": "Score lead",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1100,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "mode": "url",
+          "value": "YOUR_SHEET_ID"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Leads"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [],
+          "schema": []
+        },
+        "options": {}
+      },
+      "id": "b7c0de00-0000-4000-8000-000000000010",
+      "name": "Save lead",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        1320,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "sendTo": "PASTE_YOUR_EMAIL",
+        "subject": "={{ $('Score lead').first().json.priority === 'chaud' ? '[CHAUD] ' : '' }}Nouveau lead Tbibia : {{ $('Score lead').first().json.name }} ({{ $('Score lead').first().json.city || 'ville ?' }})",
+        "message": "=<p><b>{{ $('Score lead').first().json.name }}</b> - score {{ $('Score lead').first().json.score }}/6<br>Cabinet : {{ $('Score lead').first().json.clinic || '-' }}<br>Ville : {{ $('Score lead').first().json.city || '-' }}<br>Téléphone : {{ $('Score lead').first().json.phone }}<br>Source : {{ $('Score lead').first().json.source }}<br>Son message : {{ $('Score lead').first().json.message || '-' }}</p><p><b>Message proposé :</b><br>{{ $('Score lead').first().json.aiMessage }}</p><p><a href=\"{{ $('Score lead').first().json.whatsappLink }}\">Envoyer sur WhatsApp</a></p>",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "id": "b7c0de00-0000-4000-8000-000000000011",
+      "name": "Email me the lead",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        1540,
+        -80
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "b7c0de00-0000-4000-8000-000000000013",
+      "name": "Duplicate - ignore",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        880,
+        120
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 2. Daily follow-ups (9:00)\nNew leads not contacted after 24h + contacted leads silent 3+ days",
+        "width": 1100,
+        "height": 300
+      },
+      "id": "b7c0de00-0000-4000-8000-000000000014",
+      "name": "Note 14",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -60,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "days",
+              "triggerAtHour": 9
+            }
+          ]
+        }
+      },
+      "id": "b7c0de00-0000-4000-8000-000000000015",
+      "name": "Every day 9:00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        520
+      ]
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "mode": "url",
+          "value": "YOUR_SHEET_ID"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Leads"
+        },
+        "options": {}
+      },
+      "id": "b7c0de00-0000-4000-8000-000000000016",
+      "name": "Read leads (daily)",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        220,
+        520
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Daily: leads never contacted after 24h, and contacted leads silent for 3+ days (max 2 follow-ups).\nconst DAY = 24 * 60 * 60 * 1000;\nconst now = Date.now();\nconst notContacted = [];\nconst toRelance = [];\n\nfor (const { json: r } of $input.all()) {\n  if (!r.phone) continue;\n  const status = String(r.status ?? '').toLowerCase();\n  const received = Date.parse(r.receivedAt);\n  const last = Date.parse(r.lastContactAt);\n  const followUps = Number(r.followUps) || 0;\n  if (status === 'nouveau' && now - received > DAY) notContacted.push(r);\n  if (status === 'contacté' && !Number.isNaN(last) && now - last > 3 * DAY && followUps < 2) toRelance.push(r);\n}\nif (!notContacted.length && !toRelance.length) return [];\n\nconst relanceLink = (r) => {\n  const first = String(r.name).replace(/^dr\\.?\\s*/i, '').split(' ')[0];\n  const msg = `Bonjour Dr ${first}, je reviens vers vous au sujet de Tbibia. Voulez-vous que je vous montre comment il fonctionne avec votre cabinet ? Ça prend 15 minutes.`;\n  return `https://wa.me/${String(r.phone).replace(/\\D/g, '')}?text=${encodeURIComponent(msg)}`;\n};\nconst row = (r, link) => `<li><b>${r.name}</b> (${r.clinic || '-'}, ${r.city || '-'}) ${r.priority === 'chaud' ? '<b>[CHAUD]</b>' : ''} <a href=\"${link}\">WhatsApp</a></li>`;\n\nlet html = '';\nif (notContacted.length) html += `<h3>Pas encore contactés (${notContacted.length})</h3><ul>${notContacted.map((r) => row(r, r.whatsappLink)).join('')}</ul>`;\nif (toRelance.length) html += `<h3>À relancer (${toRelance.length})</h3><ul>${toRelance.map((r) => row(r, relanceLink(r))).join('')}</ul>`;\nhtml += '<p>Pense à mettre à jour status / lastContactAt / followUps dans la feuille après chaque message.</p>';\n\nreturn [{ json: { subject: `Tbibia : ${notContacted.length + toRelance.length} leads à traiter aujourd'hui`, html } }];"
+      },
+      "id": "b7c0de00-0000-4000-8000-000000000017",
+      "name": "Who to contact",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        440,
+        520
+      ]
+    },
+    {
+      "parameters": {
+        "sendTo": "PASTE_YOUR_EMAIL",
+        "subject": "={{ $json.subject }}",
+        "message": "={{ $json.html }}",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "id": "b7c0de00-0000-4000-8000-000000000018",
+      "name": "Email follow-up list",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        660,
+        520
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 3. Weekly report (Monday 8:00)",
+        "width": 1100,
+        "height": 300
+      },
+      "id": "b7c0de00-0000-4000-8000-000000000020",
+      "name": "Note 20",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -60,
+        740
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "weeks",
+              "triggerAtDay": [
+                1
+              ],
+              "triggerAtHour": 8
+            }
+          ]
+        }
+      },
+      "id": "b7c0de00-0000-4000-8000-000000000021",
+      "name": "Every Monday 8:00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        860
+      ]
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "mode": "url",
+          "value": "YOUR_SHEET_ID"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Leads"
+        },
+        "options": {}
+      },
+      "id": "b7c0de00-0000-4000-8000-000000000022",
+      "name": "Read leads (weekly)",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        220,
+        860
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Weekly: what happened over the last 7 days.\nconst WEEK = 7 * 24 * 60 * 60 * 1000;\nconst now = Date.now();\nconst rows = $input.all().map((i) => i.json).filter((r) => r.phone);\nconst thisWeek = rows.filter((r) => now - Date.parse(r.receivedAt) <= WEEK);\n\nconst countBy = (list, key) => list.reduce((acc, r) => {\n  const k = String(r[key] || '-').toLowerCase();\n  return { ...acc, [k]: (acc[k] || 0) + 1 };\n}, {});\nconst table = (obj) => Object.entries(obj).sort((a, b) => b[1] - a[1]).map(([k, v]) => `<li>${k} : ${v}</li>`).join('');\n\nconst won = rows.filter((r) => String(r.status).toLowerCase() === 'client').length;\nconst html = `\n<h2>Tbibia - rapport de la semaine</h2>\n<p><b>${thisWeek.length}</b> nouveaux leads cette semaine, dont <b>${thisWeek.filter((r) => r.priority === 'chaud').length}</b> chauds.</p>\n<p>Total dans la feuille : ${rows.length} leads, ${won} devenus clients (${rows.length ? Math.round((won / rows.length) * 100) : 0}%).</p>\n<h3>Sources (semaine)</h3><ul>${table(countBy(thisWeek, 'source')) || '<li>aucune</li>'}</ul>\n<h3>Villes (semaine)</h3><ul>${table(countBy(thisWeek, 'city')) || '<li>aucune</li>'}</ul>\n<h3>Statuts (total)</h3><ul>${table(countBy(rows, 'status'))}</ul>`;\n\nreturn [{ json: { subject: `Tbibia : ${thisWeek.length} leads cette semaine`, html } }];"
+      },
+      "id": "b7c0de00-0000-4000-8000-000000000023",
+      "name": "Build report",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        440,
+        860
+      ]
+    },
+    {
+      "parameters": {
+        "sendTo": "PASTE_YOUR_EMAIL",
+        "subject": "={{ $json.subject }}",
+        "message": "={{ $json.html }}",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "id": "b7c0de00-0000-4000-8000-000000000024",
+      "name": "Email weekly report",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        660,
+        860
+      ]
+    }
+  ],
+  "connections": {
+    "New lead": {
+      "main": [
+        [
+          {
+            "node": "Clean lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Clean lead": {
+      "main": [
+        [
+          {
+            "node": "Already in sheet?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Already in sheet?": {
+      "main": [
+        [
+          {
+            "node": "Is new?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is new?": {
+      "main": [
+        [
+          {
+            "node": "AI writes message",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Duplicate - ignore",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI writes message": {
+      "main": [
+        [
+          {
+            "node": "Score lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Score lead": {
+      "main": [
+        [
+          {
+            "node": "Save lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save lead": {
+      "main": [
+        [
+          {
+            "node": "Email me the lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Every day 9:00": {
+      "main": [
+        [
+          {
+            "node": "Read leads (daily)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read leads (daily)": {
+      "main": [
+        [
+          {
+            "node": "Who to contact",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Who to contact": {
+      "main": [
+        [
+          {
+            "node": "Email follow-up list",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Every Monday 8:00": {
+      "main": [
+        [
+          {
+            "node": "Read leads (weekly)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read leads (weekly)": {
+      "main": [
+        [
+          {
+            "node": "Build report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build report": {
+      "main": [
+        [
+          {
+            "node": "Email weekly report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Africa/Tunis"
+  },
+  "pinData": {}
+}
